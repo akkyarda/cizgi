@@ -1,0 +1,159 @@
+**// DAHA STABİL OLMALI VE WAİT BENZERİ FONKSİYONLARI ALGILAMALI//**
+
+#include <QTRSensors.h>
+
+#define Kp 0.4 // Kendi deneyimlerinizle bulmanız gerekli küçük bir değer ile başlayıp, büyütebilirsiniz en kararlı Kp değerini bulana kadar.. 0.4
+#define Kd 2 // Bunu da küçük bir değerden başlatın ve deneyimleyerek büyütün. ( Not: Kp < Kd) 2.0
+#define rightMaxSpeed 60
+#define leftMaxSpeed 60
+#define rightBaseSpeed 50 // robot için kp ve kd değerlerini tutturduysanız şayet motorların dönmesi gereken hız budur
+#define leftBaseSpeed 50 // yukarıdaki değer ile aynıdır
+
+#define LED_PIN 5
+
+#define rightMotor1 12
+#define rightMotor2 8
+#define rightMotorPWM 9
+#define leftMotor1 7
+#define leftMotor2 4
+#define leftMotorPWM 6
+
+
+int trigPin = 2;
+int echoPin = 3;
+
+long sure;
+long uzaklik;
+
+QTRSensors qtr;
+
+const uint8_t SensorCount = 8;
+unsigned int sensorValues[SensorCount];
+
+
+
+void setup()
+{
+  // configure the sensors
+  qtr.setTypeAnalog();
+  qtr.setSensorPins((const uint8_t[]){A0, A1, A2, A3, A4, A5, A6, A7}, SensorCount);
+  pinMode(rightMotor1, OUTPUT);
+  pinMode(rightMotor2, OUTPUT);
+  pinMode(rightMotorPWM, OUTPUT);
+  pinMode(leftMotor1, OUTPUT);
+  pinMode(leftMotor2, OUTPUT);
+  pinMode(leftMotorPWM, OUTPUT);
+
+
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH); // turn on Arduino's LED to indicate we are in calibration mode
+  digitalWrite(LED_PIN, HIGH);
+
+  int i;
+  for (int i = 0; i < 100; i++) { 
+    if ( i  < 25 || i >= 75 ) {// sensörleri, karşılaşılabilecek en aydınlık ve en karanlık okumalara maruz bırakmak için sola ve sağa çevirin.
+      turn_right();
+    }
+    else {
+      turn_left();
+    }
+    qtr.calibrate();
+    delay(20);
+  }
+  wait(); //motorları durdur
+  digitalWrite(LED_BUILTIN, LOW); // turn off Arduino's LED to indicate we are through with calibration
+  digitalWrite(LED_PIN, LOW);
+   pinMode(trigPin,OUTPUT);
+  pinMode(echoPin,INPUT);
+  // print the calibration minimum values measured when emitters were on
+  Serial.begin(9600);
+  for (uint8_t i = 0; i < SensorCount; i++)
+  {
+    Serial.print(qtr.calibrationOn.minimum[i]);
+    Serial.print(' ');
+  }
+  Serial.println();
+
+  // print the calibration maximum values measured when emitters were on
+  for (uint8_t i = 0; i < SensorCount; i++)
+  {
+    Serial.print(qtr.calibrationOn.maximum[i]);
+    Serial.print(' ');
+  }
+  Serial.println();
+  Serial.println();
+  delay(1000); // Ana döngüye girmeden önce botu konumlandırmak için 1 saniye bekleyin
+}
+int lastError = 0;
+void loop()
+{
+ digitalWrite(trigPin, LOW);
+delayMicroseconds(5); //5 Mikrosaniye(saniyenin milyonda biri) beklemesini belirtiyoruz.
+digitalWrite(trigPin, HIGH);// Daha sonra pinimizin ses dalgası göndermesi için emir veriyoruz.
+delayMicroseconds(10);
+digitalWrite(trigPin, LOW);   //Yeni ses dalgası üretebilmesi için trig pinimizi pasif durumuna getiriyoruz.
+sure = pulseIn(echoPin, HIGH); //Gönderilen ses dalgasının geri dönmesindeki süre ölçülüyor.
+uzaklik= sure /29.1/2;//Ölçütüğümüz süre uzaklığa çevriliyor
+if(uzaklik > 200){ //if komutu ile 200 cm ve üzeri bütün uzaklıklar 200 cm olarak yazılacak.
+uzaklik = 200;}
+Serial.print("Uzaklik "); 
+Serial.print(uzaklik); //Ölçtüğümüz uzaklığımız bilgisayarımıza yani Arduino programımızda Araçlar>Seri Port Ekranı kısmına yazılıyor.
+Serial.println(" CM "); 
+  delay(100);
+  unsigned int position = qtr.readLineWhite(sensorValues);
+ for (uint8_t i = 0; i < SensorCount; i++)
+  {
+    Serial.print(sensorValues[i]);
+    Serial.print('\t');
+  }
+  Serial.println(position);
+
+
+  int error = position - 3500;
+  int motorSpeed = Kp * error + Kd * (error - lastError);
+  lastError = error;
+  int rightMotorSpeed = rightBaseSpeed + motorSpeed;
+  int leftMotorSpeed = leftBaseSpeed - motorSpeed;
+  if (rightMotorSpeed > rightMaxSpeed ) rightMotorSpeed = rightMaxSpeed;
+  if (leftMotorSpeed > leftMaxSpeed ) leftMotorSpeed = leftMaxSpeed;
+  if (rightMotorSpeed < 0) rightMotorSpeed = 0;
+  if (leftMotorSpeed < 0) leftMotorSpeed = 0;
+  
+
+    digitalWrite(rightMotor1, HIGH);
+    digitalWrite(rightMotor2, LOW);
+    analogWrite(rightMotorPWM, rightMotorSpeed);
+
+    digitalWrite(leftMotor1, HIGH);
+    digitalWrite(leftMotor2, LOW);
+    analogWrite(leftMotorPWM, leftMotorSpeed);
+  
+}
+void wait() {
+      digitalWrite(rightMotor1,LOW);
+    digitalWrite(rightMotor2, LOW);
+   
+
+    digitalWrite(leftMotor1, LOW);
+    digitalWrite(leftMotor2, LOW);
+
+    delay(250);
+}
+void turn_left() {
+      digitalWrite(rightMotor1,HIGH);
+    digitalWrite(rightMotor2, LOW);
+    analogWrite (rightMotorPWM,rightBaseSpeed); 
+
+    digitalWrite(leftMotor1, LOW);
+    digitalWrite(leftMotor2, HIGH);
+    analogWrite (leftMotorPWM,leftBaseSpeed);
+}
+void turn_right() {
+      digitalWrite(rightMotor1,LOW);
+    digitalWrite(rightMotor2, HIGH);
+    analogWrite (rightMotorPWM,rightBaseSpeed);   
+
+    digitalWrite(leftMotor1, HIGH);
+    digitalWrite(leftMotor2, LOW);
+    analogWrite (leftMotorPWM,leftBaseSpeed);    
+}
