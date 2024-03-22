@@ -1,0 +1,156 @@
+#include <QTRSensors.h>
+
+#define Kp 0.055
+#define Kd (Kp * 0.333)
+#define Ki 0.0
+#define rightMaxSpeed 255
+#define leftMaxSpeed 255
+#define rightBaseSpeed 80// robot için kp ve kd değerlerini tutturduysanız şayet motorların dönmesi gereken hız budur
+#define leftBaseSpeed 80// yukarıdaki değer ile aynıdır
+#define leftMinSpeed 40
+#define rightMinSpeed 40
+#define LED_PIN 5
+
+#define rightMotor1 4 
+#define rightMotor2 7
+#define rightMotorPWM 6
+#define leftMotor1 8
+#define leftMotor2 12
+#define leftMotorPWM 9
+
+volatile uint32_t pulseWidth;
+uint32_t prevTime, currentTime, loopTime;
+
+int trigPin = 2;
+int echoPin = 3;
+
+long sure;
+long uzaklik;
+
+QTRSensors qtr;
+
+const uint8_t SensorCount = 8;
+unsigned int sensorValues[SensorCount];
+void hcsr_04();
+
+void setup()
+{
+  
+  
+  qtr.setTypeAnalog();
+  qtr.setSensorPins((const uint8_t[]){A0, A1, A2, A3, A4, A5, A6, A7}, SensorCount);
+  pinMode(rightMotor1, OUTPUT);
+  pinMode(rightMotor2, OUTPUT);
+  pinMode(rightMotorPWM, OUTPUT);
+  pinMode(leftMotor1, OUTPUT);
+  pinMode(leftMotor2, OUTPUT);
+  pinMode(leftMotorPWM, OUTPUT);
+
+  qtr.setEmitterPin(12);
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH); // turn on Arduino's LED to indicate we are in calibration mode
+  digitalWrite(LED_PIN, HIGH);
+
+  for (uint16_t i = 0; i < 100; i++)
+  {
+    qtr.calibrate();
+   
+  }
+  
+  digitalWrite(LED_BUILTIN, LOW); // turn off Arduino's LED to indicate we are through with calibration
+  digitalWrite(LED_PIN, LOW);
+   pinMode(trigPin,OUTPUT);
+  pinMode(echoPin,INPUT);
+  
+  delay(1000); // Ana döngüye girmeden önce botu konumlandırmak için 1 saniye bekleyin
+}
+
+int lastError = 0;
+void loop()
+{
+  currentTime = micros();
+  loopTime = currentTime - prevTime;
+  prevTime = currentTime;
+ 
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(5); //5 Mikrosaniye(saniyenin milyonda biri) beklemesini belirtiyoruz.
+  digitalWrite(trigPin, HIGH);// Daha sonra pinimizin ses dalgası göndermesi için emir veriyoruz.
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);   //Yeni ses dalgası üretebilmesi için trig pinimizi pasif durumuna getiriyoruz.
+  
+  unsigned long uzaklik = pulseWidth / 58;
+  if(uzaklik > 200){ 
+  uzaklik = 200;}
+
+  while( uzaklik < 4 ){
+    wait();
+    delay(5000);    
+    if( uzaklik > 4){
+      break;
+     }
+    else{
+      turn_left();
+      delay(200);
+      break;
+    }
+  }
+ 
+  unsigned int position = qtr.readLineWhite(sensorValues);
+
+  int error = position - 3500;
+  int motorSpeed = Kp * error + Kd * (error - lastError)/(loopTime/1e6);
+  
+  lastError = error;
+  int rightMotorSpeed = rightBaseSpeed + motorSpeed;
+  int leftMotorSpeed = leftBaseSpeed - motorSpeed;
+  if (rightMotorSpeed > rightMaxSpeed ) rightMotorSpeed = rightMaxSpeed;
+  if (leftMotorSpeed > leftMaxSpeed ) leftMotorSpeed = leftMaxSpeed;
+  if (rightMotorSpeed < rightMinSpeed) rightMotorSpeed = rightMinSpeed;
+  if (leftMotorSpeed < leftMinSpeed) leftMotorSpeed = leftMinSpeed;
+  
+    digitalWrite(rightMotor1, HIGH);
+    digitalWrite(rightMotor2, LOW);
+    analogWrite(rightMotorPWM, rightMotorSpeed);
+
+    digitalWrite(leftMotor1, HIGH);
+    digitalWrite(leftMotor2, LOW);
+    analogWrite(leftMotorPWM, leftMotorSpeed);
+  
+}
+void wait() {
+      digitalWrite(rightMotor1,LOW);
+    digitalWrite(rightMotor2, LOW);
+   
+
+    digitalWrite(leftMotor1, LOW);
+    digitalWrite(leftMotor2, LOW);
+
+    delay(250);
+}
+void turn_left() {
+      digitalWrite(rightMotor1,HIGH);
+    digitalWrite(rightMotor2, LOW);
+    analogWrite (rightMotorPWM,rightBaseSpeed); 
+
+    digitalWrite(leftMotor1, LOW);
+    digitalWrite(leftMotor2, HIGH);
+    analogWrite (leftMotorPWM,leftBaseSpeed);
+}
+void turn_right() {
+      digitalWrite(rightMotor1,LOW);
+    digitalWrite(rightMotor2, HIGH);
+    analogWrite (rightMotorPWM,rightBaseSpeed);   
+
+    digitalWrite(leftMotor1, HIGH);
+    digitalWrite(leftMotor2, LOW);
+    analogWrite (leftMotorPWM,leftBaseSpeed);    
+}
+
+void hcsr_04(){
+    if(digitalRead(echoPin) == 1){
+    pulseWidth = micros();
+  }
+  else{
+    pulseWidth = micros() - pulseWidth;
+  }
+}
